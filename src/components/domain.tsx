@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Ban, RefreshCcw, Repeat, ShieldX, WifiOff, XCircle } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Ban, RefreshCcw, Repeat, ShieldX, ShoppingBag, WifiOff, XCircle } from 'lucide-react';
 import type { Allergen, Category, DeclineReason, Transaction } from '@/mock-api';
 import { useI18n, type I18n } from '@/i18n/I18nProvider';
 import { Badge, type Tone } from '@/ui/Badge';
@@ -57,6 +57,7 @@ export function txTitle(i: Pick<I18n, 't' | 'lang'>, tx: Transaction): string {
   if (tx.type === 'topup') return t(tx.status === 'failed' ? 'tx.topupFailed' : 'tx.topup');
   if (tx.type === 'refund') return t('tx.refund');
   if (tx.type === 'transfer') return t('tx.transfer');
+  if (tx.type === 'order' && tx.status === 'failed') return t('tx.orderFailed');
   const names = (tx.lines ?? []).map((l) => (lang === 'ar' ? l.nameAr : l.name) + (l.qty > 1 ? ` ×${l.qty}` : ''));
   return names.join(lang === 'ar' ? '، ' : ', ') || t('tx.purchase');
 }
@@ -84,6 +85,7 @@ function txIcon(tx: Transaction): ReactNode {
   if (tx.type === 'topup') return <ArrowDownLeft className={cls} />;
   if (tx.type === 'refund') return <RefreshCcw className={cls} />;
   if (tx.type === 'transfer') return <Repeat className={cls} />;
+  if (tx.type === 'order') return <ShoppingBag className={cls} />;
   return <ArrowUpRight className={cls} />;
 }
 
@@ -94,6 +96,8 @@ const iconTone = (tx: Transaction) =>
       ? 'bg-amber-50 text-amber-700'
       : tx.type === 'purchase'
         ? 'bg-slate-100 text-slate-700'
+        : tx.type === 'order'
+          ? 'bg-violet-50 text-violet-700'
         : 'bg-emerald-50 text-emerald-700';
 
 export function TxAmount({ tx, className }: { tx: Transaction; className?: string }) {

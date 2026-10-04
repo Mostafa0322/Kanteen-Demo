@@ -103,7 +103,7 @@ export function Transactions({ schoolId }: { schoolId: string }) {
           <Field label={t('tx.type')}>
             {(id) => (
               <Select id={id} value={type} onChange={(e) => setType(e.target.value as TxType | 'all')}>
-                {(['all', 'purchase', 'topup', 'refund', 'transfer'] as const).map((v) => (
+                {(['all', 'purchase', 'order', 'topup', 'refund', 'transfer'] as const).map((v) => (
                   <option key={v} value={v}>
                     {t(`tx.type.${v}`)}
                   </option>

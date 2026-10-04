@@ -11,12 +11,16 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
   const { t } = useI18n();
   const container = useContext(PortalTarget);
   const panel = useRef<HTMLDivElement>(null);
+  // Callers usually pass an inline arrow; keep it in a ref so a re-render
+  // (e.g. a live data refresh) doesn't re-run the effect and steal focus.
+  const close = useRef(onClose);
+  close.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') close.current();
     };
     document.addEventListener('keydown', onKey);
     const first = panel.current?.querySelector<HTMLElement>('input, select, textarea, button:not([data-close])');
@@ -25,7 +29,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
       document.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   const body = (

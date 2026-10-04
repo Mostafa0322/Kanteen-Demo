@@ -25,6 +25,11 @@ import type {
   TxFilter,
   Vendor,
   WeeklyReport,
+  CheckoutRequest,
+  Offering,
+  OfferingView,
+  Order,
+  OrderStatus,
 } from './types';
 import { broadcast, getDb, mutate, replaceDb, subscribe } from './store';
 import { addDays, dayKey, parseDayKey, startOfWeek } from './dates';
@@ -83,7 +88,10 @@ function itemParams(tx: Transaction) {
 function balanceDelta(tx: Transaction): number {
   if (tx.status !== 'approved') return 0;
   if (tx.type === 'purchase') return -tx.amount;
-  if (tx.type === 'topup' || tx.type === 'refund') return tx.amount;
+  if (tx.type === 'topup') return tx.amount;
+  // Shop payments/refunds only touch the wallet when the wallet balance was used.
+  if (tx.type === 'order') return tx.method === 'balance' ? -tx.amount : 0;
+  if (tx.type === 'refund') return tx.method && tx.method !== 'balance' ? 0 : tx.amount;
   return 0;
 }
 
@@ -115,6 +123,24 @@ function matchesFilter(tx: Transaction, f: TxFilter, db: Database): boolean {
   }
   return true;
 }
+
+/* ---------- shop helpers ---------- */
+
+/** Units sold (paid or collected, not refunded). */
+function soldFor(db: Database, offeringId: ID): number {
+  return db.orders.filter((o) => o.offeringId === offeringId && o.status !== 'refunded').reduce((a, o) => a + o.qty, 0);
+}
+
+function availability(db: Database, o: Offering) {
+  const sold = soldFor(db, o.id);
+  const limit = o.kind === 'event' ? o.capacity : o.stock;
+  const remaining = limit == null ? null : Math.max(0, limit - sold);
+  const now = new Date().toISOString();
+  const pastDeadline = o.kind === 'event' && ((o.deadline != null && o.deadline < now) || (o.eventDate != null && o.eventDate < now));
+  return { sold, remaining, closed: pastDeadline || remaining === 0 };
+}
+
+export type OfferingAdminView = Offering & { sold: number; remaining: number | null; closed: boolean; revenue: number; orderCount: number };
 
 /* ---------- API ---------- */
 
@@ -599,7 +625,7 @@ export const api = {
       const byVendor = new Map(vendors.map((v) => [v.id, { vendorId: v.id, name: v.name, nameAr: v.nameAr, sales: 0, count: 0 }]));
       const byCategory = new Map<string, { category: MenuItem['category']; sales: number; qty: number }>();
       const methods = new Map<string, { method: string; amount: number; count: number }>();
-      let gross = 0, refunds = 0, topups = 0, declined = 0, blocked = 0, offlineSynced = 0, dayNet = 0, afterNet = 0;
+      let gross = 0, refunds = 0, topups = 0, declined = 0, blocked = 0, offlineSynced = 0, dayNet = 0, afterNet = 0, shopSales = 0, shopFromWallet = 0;
       for (const tx of db.transactions) {
         if (tx.schoolId !== schoolId) continue;
         const k = dayKey(tx.createdAt);
@@ -627,8 +653,12 @@ export const api = {
             c.qty += l.qty;
             byCategory.set(cat, c);
           }
-        } else if (tx.type === 'refund') refunds += tx.amount;
-        else if (tx.type === 'topup' && tx.status === 'approved') {
+        } else if (tx.type === 'refund') {
+          if (balanceDelta(tx) > 0) refunds += tx.amount;
+        } else if (tx.type === 'order' && tx.status === 'approved') {
+          shopSales += tx.amount;
+          if (tx.method === 'balance') shopFromWallet += tx.amount;
+        } else if (tx.type === 'topup' && tx.status === 'approved') {
           topups += tx.amount;
           const m = methods.get(tx.method ?? 'card') ?? { method: tx.method ?? 'card', amount: 0, count: 0 };
           m.amount = round2(m.amount + tx.amount);
@@ -651,10 +681,222 @@ export const api = {
         declined,
         blocked,
         offlineSynced,
+        shopSales: round2(shopSales),
+        shopFromWallet: round2(shopFromWallet),
         openingFloat: round2(closingFloat - dayNet),
         closingFloat,
       };
     }),
+
+  /* ----- school shop: events & store ----- */
+
+  /** Dashboard view of every offering, including hidden ones. */
+  listOfferings: (schoolId: ID): Promise<OfferingAdminView[]> =>
+    read(() => {
+      const db = getDb();
+      return clone(
+        db.offerings
+          .filter((o) => o.schoolId === schoolId)
+          .map((o) => {
+            const paid = db.orders.filter((r) => r.offeringId === o.id && r.status !== 'refunded');
+            return { ...o, ...availability(db, o), revenue: round2(paid.reduce((a, r) => a + r.total, 0)), orderCount: paid.length };
+          })
+          .sort((a, b) => (a.kind === b.kind ? (a.eventDate ?? a.createdAt).localeCompare(b.eventDate ?? b.createdAt) : a.kind === 'event' ? -1 : 1)),
+      );
+    }),
+
+  /** What a parent can buy for one child. */
+  listOfferingsForStudent: (studentId: ID): Promise<OfferingView[]> =>
+    read(() => {
+      const db = getDb();
+      const s = findStudent(db, studentId);
+      return clone(
+        db.offerings
+          .filter((o) => o.schoolId === s.schoolId && o.active)
+          .map((o) => ({
+            ...o,
+            ...availability(db, o),
+            eligible: o.grades.length === 0 || o.grades.includes(s.grade),
+            registered: o.kind === 'event' && db.orders.some((r) => r.offeringId === o.id && r.studentId === s.id && r.status !== 'refunded'),
+          }))
+          .sort((a, b) => (a.kind === b.kind ? (a.eventDate ?? '').localeCompare(b.eventDate ?? '') : a.kind === 'event' ? -1 : 1)),
+      );
+    }),
+
+  checkout: (req: CheckoutRequest): Promise<Order> =>
+    latency(req.method === 'balance' ? 1.2 : 2.5)
+      .then(() =>
+        mutate((db) => {
+          const o = db.offerings.find((x) => x.id === req.offeringId);
+          const s = findStudent(db, req.studentId);
+          if (!o || !o.active || o.schoolId !== s.schoolId) throw new ApiError('not_found');
+          const qty = o.kind === 'event' ? 1 : Math.floor(req.qty);
+          if (!(qty >= 1 && qty <= 10)) throw new ApiError('invalid_qty');
+          if (o.grades.length && !o.grades.includes(s.grade)) throw new ApiError('not_eligible');
+          const av = availability(db, o);
+          if (av.closed) throw new ApiError(av.remaining === 0 ? 'sold_out' : 'registration_closed');
+          if (av.remaining != null && qty > av.remaining) throw new ApiError('sold_out');
+          if (o.sizes?.length && !(req.size && o.sizes.includes(req.size))) throw new ApiError('size_required');
+          if (o.kind === 'event' && db.orders.some((r) => r.offeringId === o.id && r.studentId === s.id && r.status !== 'refunded'))
+            throw new ApiError('already_registered');
+
+          const total = round2(o.price * qty);
+          const now = new Date().toISOString();
+          const tx: Transaction = {
+            id: newId('tx'),
+            type: 'order',
+            status: 'approved',
+            studentId: s.id,
+            schoolId: s.schoolId,
+            amount: total,
+            method: req.method,
+            lines: [{ itemId: o.id, name: o.name + (req.size ? ` (${req.size})` : ''), nameAr: o.nameAr + (req.size ? ` (${req.size})` : ''), price: o.price, qty }],
+            createdAt: now,
+          };
+          if (req.method === 'balance') {
+            if (s.balance < total) throw new ApiError('insufficient_balance');
+          } else if (req.simulateFailure) {
+            tx.status = 'failed';
+            tx.reason = 'payment_failed';
+            db.transactions.push(tx);
+            return null;
+          }
+          const before = s.balance;
+          if (req.method === 'balance') {
+            s.balance = round2(s.balance - total);
+            tx.balanceAfter = s.balance;
+          }
+          db.transactions.push(tx);
+          const order: Order = {
+            id: newId('ord'),
+            schoolId: s.schoolId,
+            offeringId: o.id,
+            kind: o.kind,
+            name: o.name,
+            nameAr: o.nameAr,
+            parentId: req.parentId,
+            studentId: s.id,
+            qty,
+            size: req.size,
+            unitPrice: o.price,
+            total,
+            method: req.method,
+            status: 'paid',
+            txId: tx.id,
+            createdAt: now,
+          };
+          db.orders.unshift(order);
+          notify(db, s, { kind: 'order', txId: tx.id, amount: total, params: { item: o.name, itemAr: o.nameAr, kind: o.kind, method: req.method } });
+          if (req.method === 'balance' && before >= s.lowBalanceThreshold && s.balance < s.lowBalanceThreshold) {
+            notify(db, s, { kind: 'low_balance', amount: s.balance, params: { threshold: s.lowBalanceThreshold } });
+          }
+          return clone(order);
+        }, 'shop'),
+      )
+      .then((order) => {
+        if (!order) throw new ApiError('payment_failed');
+        return order;
+      }),
+
+  listOrders: (f: { schoolId?: ID; parentId?: ID; studentId?: ID; offeringId?: ID; status?: OrderStatus | 'all' }): Promise<Order[]> =>
+    read(() =>
+      clone(
+        getDb().orders.filter(
+          (o) =>
+            (!f.schoolId || o.schoolId === f.schoolId) &&
+            (!f.parentId || o.parentId === f.parentId) &&
+            (!f.studentId || o.studentId === f.studentId) &&
+            (!f.offeringId || o.offeringId === f.offeringId) &&
+            (!f.status || f.status === 'all' || o.status === f.status),
+        ),
+      ),
+    ),
+
+  upsertOffering: (input: Omit<Offering, 'id' | 'createdAt'> & { id?: ID }, actor = 'School Admin'): Promise<Offering> =>
+    write(() =>
+      mutate((db) => {
+        if (!input.name.trim() || !input.nameAr.trim() || !(input.price > 0)) throw new ApiError('invalid_item');
+        if (input.kind === 'event' && (!input.eventDate || !input.deadline)) throw new ApiError('dates_required');
+        if (input.kind === 'event' && input.deadline! > input.eventDate!) throw new ApiError('deadline_after_event');
+        const now = new Date().toISOString();
+        const existing = input.id ? db.offerings.find((o) => o.id === input.id) : undefined;
+        const wasVisible = existing?.active ?? false;
+        let saved: Offering;
+        if (existing) {
+          Object.assign(existing, input);
+          saved = existing;
+        } else {
+          saved = { ...input, id: newId('off'), createdAt: now } as Offering;
+          db.offerings.push(saved);
+        }
+        db.audit.unshift({
+          id: newId('aud'),
+          schoolId: saved.schoolId,
+          at: now,
+          actor,
+          action: existing ? 'offering_updated' : 'offering_created',
+          detail: `${saved.name} @ ${saved.price}${saved.active ? '' : ' (hidden)'}`,
+        });
+        // Publishing an event tells the parents of every eligible child.
+        if (saved.kind === 'event' && saved.active && !wasVisible) {
+          for (const s of db.students) {
+            if (s.schoolId !== saved.schoolId || !s.parentId) continue;
+            if (saved.grades.length && !saved.grades.includes(s.grade)) continue;
+            notify(db, s, { kind: 'announcement', amount: saved.price, params: { item: saved.name, itemAr: saved.nameAr, deadline: saved.deadline ?? '' } });
+          }
+        }
+        return clone(saved);
+      }, 'shop'),
+    ),
+
+  fulfillOrder: (orderId: ID, actor = 'School Admin'): Promise<Order> =>
+    write(() =>
+      mutate((db) => {
+        const o = db.orders.find((x) => x.id === orderId);
+        if (!o) throw new ApiError('not_found');
+        if (o.status !== 'paid') throw new ApiError('invalid_status');
+        o.status = 'fulfilled';
+        o.fulfilledAt = new Date().toISOString();
+        db.audit.unshift({ id: newId('aud'), schoolId: o.schoolId, at: o.fulfilledAt, actor, action: 'order_fulfilled', studentId: o.studentId, detail: o.name + (o.size ? ` (${o.size})` : '') });
+        return clone(o);
+      }, 'shop'),
+    ),
+
+  /** Refunds go back to the original payment method (wallet balance or card/transfer). */
+  refundOrder: (orderId: ID, reason: string, actor = 'School Admin'): Promise<Order> =>
+    write(() =>
+      mutate((db) => {
+        const o = db.orders.find((x) => x.id === orderId);
+        if (!o) throw new ApiError('not_found');
+        if (o.status === 'refunded') throw new ApiError('invalid_status');
+        if (!reason.trim()) throw new ApiError('reason_required');
+        const s = findStudent(db, o.studentId);
+        const now = new Date().toISOString();
+        o.status = 'refunded';
+        o.refundedAt = now;
+        o.refundReason = reason.trim();
+        const tx: Transaction = {
+          id: newId('tx'),
+          type: 'refund',
+          status: 'approved',
+          studentId: s.id,
+          schoolId: s.schoolId,
+          amount: o.total,
+          method: o.method,
+          note: `${o.name}: ${reason.trim()}`,
+          lines: [{ itemId: o.offeringId, name: o.name, nameAr: o.nameAr, price: o.unitPrice, qty: o.qty }],
+          createdAt: now,
+        };
+        if (o.method === 'balance') {
+          s.balance = round2(s.balance + o.total);
+          tx.balanceAfter = s.balance;
+        }
+        db.transactions.push(tx);
+        db.audit.unshift({ id: newId('aud'), schoolId: o.schoolId, at: now, actor, action: 'order_refunded', studentId: s.id, txId: tx.id, amount: o.total, detail: `${o.name} — ${reason.trim()}` });
+        notify(db, s, { kind: 'order_refunded', txId: tx.id, amount: o.total, params: { item: o.name, itemAr: o.nameAr, method: o.method, note: reason.trim() } });
+        return clone(o);
+      }, 'shop'),
+    ),
 
   getWeeklyReport: (schoolId: ID): Promise<WeeklyReport> =>
     read(() => {

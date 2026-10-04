@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ChevronRight, Gauge, Nfc, Plus, Snowflake, UtensilsCrossed } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Gauge, Nfc, Plus, Snowflake, Ticket, UtensilsCrossed } from 'lucide-react';
 import { api } from '@/mock-api';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useApi } from '@/lib/useApi';
@@ -13,10 +13,14 @@ import { useToast } from '@/ui/Toast';
 import { TxRow } from '@/components/domain';
 
 export function HomeScreen({ studentId }: { studentId: string }) {
-  const { t, n, money, list } = useI18n();
+  const { t, n, money, list, date } = useI18n();
+  const i18nDate = (d: string) => date(d, { day: 'numeric', month: 'short' });
   const toast = useToast();
   const student = useApi(() => api.getStudent(studentId), [studentId]);
   const recent = useApi(() => api.listTransactions({ studentId, limit: 6 }), [studentId]);
+  const offerings = useApi(() => api.listOfferingsForStudent(studentId), [studentId]);
+  // Next event this child can still register for.
+  const nextEvent = offerings.data?.find((o) => o.kind === 'event' && o.eligible && !o.closed && !o.registered);
   const s = student.data;
 
   if (student.error) return <ErrorState className="m-4" error={student.error} onRetry={student.reload} />;
@@ -144,6 +148,22 @@ export function HomeScreen({ studentId }: { studentId: string }) {
           </span>
         </Link>
       </div>
+
+      {nextEvent && (
+        <Link to="/parent/shop" className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3 hover:bg-violet-100/70">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-2xl" aria-hidden="true">
+            {nextEvent.emoji}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1 text-xs font-semibold text-violet-800">
+              <Ticket className="size-3.5" /> {t('home.upcomingEvent')}
+            </span>
+            <span className="block truncate font-semibold text-slate-900">{n(nextEvent)}</span>
+            {nextEvent.deadline && <span className="block text-xs text-slate-600">{t('shop.registerBy', { date: i18nDate(nextEvent.deadline) })}</span>}
+          </span>
+          <ChevronRight className="size-5 text-violet-700 rtl:rotate-180" aria-hidden="true" />
+        </Link>
+      )}
 
       {/* Recent */}
       <Card className="p-2">

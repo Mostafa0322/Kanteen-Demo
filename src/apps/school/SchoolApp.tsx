@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { ArrowLeft, BarChart3, FileSpreadsheet, LayoutDashboard, Menu as MenuIcon, ReceiptText, RotateCcw, Settings, UtensilsCrossed, Users, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, FileSpreadsheet, LayoutDashboard, Menu as MenuIcon, ReceiptText, RotateCcw, Settings, ShoppingBag, UtensilsCrossed, Users, X } from 'lucide-react';
 import { api } from '@/mock-api';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useApi } from '@/lib/useApi';
@@ -15,6 +15,7 @@ import { MenuManagement } from './MenuManagement';
 import { Refunds } from './Refunds';
 import { Reports } from './Reports';
 import { SettingsPage } from './SettingsPage';
+import { ShopAdmin } from './ShopAdmin';
 
 const SCHOOL_KEY = 'kanteen.school.id';
 
@@ -44,6 +45,7 @@ export default function SchoolApp() {
     { to: '/school/transactions', icon: ReceiptText, label: t('school.nav.transactions') },
     { to: '/school/closing', icon: FileSpreadsheet, label: t('school.nav.closing') },
     { to: '/school/menu', icon: UtensilsCrossed, label: t('school.nav.menu') },
+    { to: '/school/shop', icon: ShoppingBag, label: t('school.nav.shop') },
     { to: '/school/refunds', icon: RotateCcw, label: t('school.nav.refunds') },
     { to: '/school/reports', icon: BarChart3, label: t('school.nav.reports') },
     { to: '/school/settings', icon: Settings, label: t('school.nav.settings') },
@@ -132,6 +134,7 @@ export default function SchoolApp() {
             <Route path="transactions" element={<Transactions schoolId={schoolId} />} />
             <Route path="closing" element={<ClosingReport schoolId={schoolId} />} />
             <Route path="menu" element={<MenuManagement />} />
+            <Route path="shop" element={<ShopAdmin schoolId={schoolId} />} />
             <Route path="refunds" element={<Refunds schoolId={schoolId} />} />
             <Route path="reports" element={<Reports schoolId={schoolId} />} />
             <Route path="settings" element={<SettingsPage />} />

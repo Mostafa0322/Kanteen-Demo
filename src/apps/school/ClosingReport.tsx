@@ -27,6 +27,8 @@ export function ClosingReport({ schoolId }: { schoolId: string }) {
       ['summary', 'refunds', d.refunds, ''],
       ['summary', 'net_sales', d.netSales, ''],
       ['summary', 'topups', d.topups, ''],
+      ['summary', 'shop_paid_from_wallet', d.shopFromWallet, ''],
+      ['summary', 'shop_sales_all_methods', d.shopSales, ''],
       ['summary', 'closing_float', d.closingFloat, ''],
       ['summary', 'declined', '', d.declined],
       ['summary', 'blocked', '', d.blocked],
@@ -39,7 +41,7 @@ export function ClosingReport({ schoolId }: { schoolId: string }) {
   };
 
   const d = r.data;
-  const reconciles = d ? Math.abs(d.openingFloat + d.topups + d.refunds - d.grossSales - d.closingFloat) < 0.01 : true;
+  const reconciles = d ? Math.abs(d.openingFloat + d.topups + d.refunds - d.grossSales - d.shopFromWallet - d.closingFloat) < 0.01 : true;
 
   return (
     <>
@@ -76,15 +78,17 @@ export function ClosingReport({ schoolId }: { schoolId: string }) {
                   <Line label={t('closing.topups')} value={`+ ${money(d.topups)}`} positive />
                   <Line label={t('closing.refunds')} value={`+ ${money(d.refunds)}`} positive />
                   <Line label={t('closing.gross')} value={`− ${money(d.grossSales)}`} />
+                  <Line label={t('closing.shopFromWallet')} value={`− ${money(d.shopFromWallet)}`} />
                   <Line label={t('closing.closing')} value={money(d.closingFloat)} strong />
                 </tbody>
               </table>
               <p className="mt-3 text-xs text-slate-600">{t('closing.floatHint')}</p>
-              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <Mini label={t('closing.net')} value={money(d.netSales)} />
                 <Mini label={t('status.declined')} value={num(d.declined)} />
                 <Mini label={t('status.blocked')} value={num(d.blocked)} />
                 <Mini label={t('closing.offline')} value={num(d.offlineSynced)} />
+                <Mini label={t('closing.shopSales')} value={money(d.shopSales)} />
               </div>
             </CardBody>
           </Card>

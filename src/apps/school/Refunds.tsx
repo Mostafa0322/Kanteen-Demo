@@ -65,6 +65,10 @@ export function Refunds({ schoolId }: { schoolId: string }) {
     menu_updated: 'brand',
     settings_updated: 'neutral',
     data_reset: 'neutral',
+    offering_created: 'violet',
+    offering_updated: 'violet',
+    order_fulfilled: 'info',
+    order_refunded: 'success',
   };
   const auditRows = useMemo(() => (audit.data ?? []).filter((a) => auditFilter === 'all' || a.action === auditFilter), [audit.data, auditFilter]);
 

@@ -42,6 +42,24 @@ export function notificationText(i: I18n, x: AppNotification, child: string): No
       return p.frozen
         ? { tone: 'warning', title: t('notif.frozen.title'), body: t('notif.frozen.body', { child }) }
         : { tone: 'success', title: t('notif.unfrozen.title'), body: t('notif.unfrozen.body', { child }) };
+    case 'order':
+      return {
+        tone: 'success',
+        title: t(p.kind === 'event' ? 'notif.orderEvent.title' : 'notif.order.title'),
+        body: t('notif.order.body', { child, item, amount: money(x.amount ?? 0), method: t(`topup.method.${(p.method as 'card') ?? 'card'}`) }),
+      };
+    case 'order_refunded':
+      return {
+        tone: 'info',
+        title: t('notif.orderRefunded.title'),
+        body: t(p.method === 'balance' ? 'notif.orderRefunded.bodyWallet' : 'notif.orderRefunded.bodyMethod', { item, amount: money(x.amount ?? 0), child, note: String(p.note ?? '') }),
+      };
+    case 'announcement':
+      return {
+        tone: 'info',
+        title: t('notif.announcement.title', { item }),
+        body: t('notif.announcement.body', { child, amount: money(x.amount ?? 0), deadline: p.deadline ? i.date(String(p.deadline), { day: 'numeric', month: 'short' }) : '—' }),
+      };
     case 'bracelet':
       return { tone: 'info', title: t('notif.bracelet.title'), body: t('notif.bracelet.body', { child, bracelet: String(p.bracelet ?? '') }) };
   }

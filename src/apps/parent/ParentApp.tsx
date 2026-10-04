@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { Bell, ChevronDown, Home, ListOrdered, LogOut, ShieldCheck, UtensilsCrossed, Wallet } from 'lucide-react';
+import { Bell, ChevronDown, Home, ListOrdered, LogOut, ShieldCheck, ShoppingBag, UtensilsCrossed, Wallet } from 'lucide-react';
 import { api, type AppNotification } from '@/mock-api';
 import { useI18n } from '@/i18n/I18nProvider';
 import { useApi } from '@/lib/useApi';
@@ -19,6 +19,7 @@ import { TopUpScreen } from './TopUpScreen';
 import { ControlsScreen } from './ControlsScreen';
 import { ActivityScreen } from './ActivityScreen';
 import { MenuScreen } from './MenuScreen';
+import { ShopScreen } from './ShopScreen';
 import { notificationText } from './notifications';
 
 export default function ParentApp() {
@@ -63,6 +64,7 @@ function Shell({ parentId, childId }: { parentId: string; childId: string }) {
   const tabs = [
     { to: '/parent', end: true, icon: Home, label: t('parent.nav.home') },
     { to: '/parent/topup', icon: Wallet, label: t('parent.nav.topup') },
+    { to: '/parent/shop', icon: ShoppingBag, label: t('parent.nav.shop') },
     { to: '/parent/controls', icon: ShieldCheck, label: t('parent.nav.controls') },
     { to: '/parent/activity', icon: ListOrdered, label: t('parent.nav.activity') },
     { to: '/parent/menu', icon: UtensilsCrossed, label: t('parent.nav.menu') },
@@ -141,12 +143,13 @@ function Shell({ parentId, childId }: { parentId: string; childId: string }) {
             <Route path="controls" element={<ControlsScreen studentId={childId} />} />
             <Route path="activity" element={<ActivityScreen studentId={childId} parentId={parentId} />} />
             <Route path="menu" element={<MenuScreen studentId={childId} />} />
+            <Route path="shop" element={<ShopScreen studentId={childId} parentId={parentId} />} />
             <Route path="*" element={<Navigate to="/parent" replace />} />
           </Routes>
         )}
       </main>
 
-      <nav aria-label={t('parent.nav.label')} className="grid grid-cols-5 border-t border-slate-200 bg-white pb-[max(env(safe-area-inset-bottom),4px)]">
+      <nav aria-label={t('parent.nav.label')} className="grid grid-cols-6 border-t border-slate-200 bg-white pb-[max(env(safe-area-inset-bottom),4px)]">
         {tabs.map(({ to, end, icon: Icon, label }) => (
           <NavLink
             key={to}
@@ -156,7 +159,7 @@ function Shell({ parentId, childId }: { parentId: string; childId: string }) {
           >
             {({ isActive }) => (
               <>
-                <span className={cx('flex h-7 w-12 items-center justify-center rounded-full transition-colors', isActive && 'bg-brand-100')}>
+                <span className={cx('flex h-7 w-11 items-center justify-center rounded-full transition-colors', isActive && 'bg-brand-100')}>
                   <Icon className="size-5" aria-hidden="true" />
                 </span>
                 {label}

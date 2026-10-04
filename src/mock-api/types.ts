@@ -78,7 +78,8 @@ export interface Parent extends LocalizedName {
   childIds: ID[];
 }
 
-export type TxType = 'purchase' | 'topup' | 'refund' | 'transfer';
+/** `order` = a school-shop payment (event ticket, uniform…), separate from canteen purchases. */
+export type TxType = 'purchase' | 'topup' | 'refund' | 'transfer' | 'order';
 export type TxStatus = 'approved' | 'declined' | 'blocked' | 'failed';
 
 export type DeclineReason =
@@ -116,7 +117,8 @@ export interface Transaction {
   reason?: DeclineReason;
   /** Machine-readable detail, e.g. the allergen or item that triggered a block. */
   reasonDetail?: { allergen?: Allergen; itemId?: ID; category?: Category; limit?: number; spent?: number };
-  method?: PaymentMethod | 'cash_desk';
+  /** `balance` = paid from (or refunded to) the student's Kanteen wallet. */
+  method?: PaymentMethod | 'cash_desk' | 'balance';
   note?: string;
   /** Recorded while the terminal was offline and synced later. */
   offline?: boolean;
@@ -124,7 +126,7 @@ export interface Transaction {
   createdAt: ISODate;
 }
 
-export type NotificationKind = 'purchase' | 'blocked' | 'declined' | 'low_balance' | 'topup' | 'refund' | 'frozen' | 'bracelet';
+export type NotificationKind = 'purchase' | 'blocked' | 'declined' | 'low_balance' | 'topup' | 'refund' | 'frozen' | 'bracelet' | 'order' | 'order_refunded' | 'announcement';
 
 export interface AppNotification {
   id: ID;
@@ -145,7 +147,18 @@ export interface AuditEntry {
   schoolId: ID;
   at: ISODate;
   actor: string;
-  action: 'refund' | 'bracelet_replaced' | 'bracelet_assigned' | 'menu_created' | 'menu_updated' | 'settings_updated' | 'data_reset';
+  action:
+    | 'refund'
+    | 'bracelet_replaced'
+    | 'bracelet_assigned'
+    | 'menu_created'
+    | 'menu_updated'
+    | 'settings_updated'
+    | 'data_reset'
+    | 'offering_created'
+    | 'offering_updated'
+    | 'order_fulfilled'
+    | 'order_refunded';
   studentId?: ID;
   txId?: ID;
   amount?: number;
@@ -156,6 +169,81 @@ export interface Settings {
   currency: string;
   /** Simulated network latency for API calls (ms). */
   latencyMs: number;
+}
+
+/* ---------- School shop: events & store ---------- */
+
+export type OfferingKind = 'event' | 'product';
+export const SHOP_CATEGORIES = ['trip', 'event', 'activity', 'uniform', 'books', 'supplies'] as const;
+export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
+export type CheckoutMethod = PaymentMethod | 'balance';
+
+export interface Offering extends LocalizedName {
+  id: ID;
+  schoolId: ID;
+  kind: OfferingKind;
+  category: ShopCategory;
+  description: string;
+  descriptionAr: string;
+  price: number;
+  emoji: string;
+  /** Hidden from parents when false. */
+  active: boolean;
+  /** Eligible grades; empty = every grade. */
+  grades: number[];
+  /* events */
+  eventDate?: ISODate;
+  deadline?: ISODate;
+  capacity?: number | null;
+  /* products */
+  sizes?: string[];
+  stock?: number | null;
+  createdAt: ISODate;
+}
+
+export type OrderStatus = 'paid' | 'fulfilled' | 'refunded';
+
+export interface Order {
+  id: ID;
+  schoolId: ID;
+  offeringId: ID;
+  kind: OfferingKind;
+  /** Snapshot of the offering name at purchase time. */
+  name: string;
+  nameAr: string;
+  parentId: ID | null;
+  studentId: ID;
+  qty: number;
+  size?: string;
+  unitPrice: number;
+  total: number;
+  method: CheckoutMethod;
+  status: OrderStatus;
+  txId?: ID;
+  createdAt: ISODate;
+  fulfilledAt?: ISODate;
+  refundedAt?: ISODate;
+  refundReason?: string;
+}
+
+/** An offering plus live availability, as seen by a parent for one child. */
+export interface OfferingView extends Offering {
+  sold: number;
+  remaining: number | null;
+  closed: boolean;
+  eligible: boolean;
+  /** Event: this child already holds a paid registration. */
+  registered: boolean;
+}
+
+export interface CheckoutRequest {
+  offeringId: ID;
+  studentId: ID;
+  parentId: ID;
+  qty: number;
+  size?: string;
+  method: CheckoutMethod;
+  simulateFailure?: boolean;
 }
 
 export interface Database {
@@ -173,6 +261,8 @@ export interface Database {
   transactions: Transaction[];
   notifications: AppNotification[];
   audit: AuditEntry[];
+  offerings: Offering[];
+  orders: Order[];
 }
 
 /* ---------- API input / output shapes ---------- */
@@ -259,6 +349,9 @@ export interface ClosingReport {
   declined: number;
   blocked: number;
   offlineSynced: number;
+  /** School-shop payments that day (all methods) and the part paid from wallets. */
+  shopSales: number;
+  shopFromWallet: number;
   openingFloat: number;
   closingFloat: number;
 }

@@ -36,7 +36,8 @@ Open **`/demo`** (or open `/parent`, `/pos` and `/school` in separate tabs/windo
 
 ### Doing it by hand
 
-- **Parent**: sign in with any demo account (password: anything), for example `mona@demo.kanteen`, who has two children. Use *Top up*, *Controls* (limit, allergies, blocked categories/items, freeze, low-balance alert), *Activity* (filters, receipts, notifications) and *Menu* (what's blocked and why, plus a per-item block).
+- **Parent**: sign in with any demo account (password: anything), for example `mona@demo.kanteen`, who has two children. Use *Top up*, *Shop*, *Controls* (limit, allergies, blocked categories/items, freeze, low-balance alert), *Activity* (filters, receipts, notifications) and *Menu* (what's blocked and why, plus a per-item block).
+- **School shop (events & store)**: in the parent app's *Shop* tab, register a child for a trip, concert or workshop, or buy uniforms and supplies with a size and quantity. Pay from the child's **Kanteen balance** or by card / mobile wallet / InstaPay-style transfer, each with success and failure states. *My orders* tracks status (registered, ready for pickup, collected, refunded). Events respect eligible grades, capacity and the registration deadline, and a child can't be registered twice. Shop payments are separate from canteen spending, so they never count against the daily limit.
 - **POS**: tap menu items, choose a bracelet in the reader dropdown and press **Tap bracelet**. To show each outcome:
   - *Approved*: any student with enough balance.
   - *Blocked (allergy)*: Laila Hassan (dairy) with Fruit Yogurt.
@@ -46,7 +47,8 @@ Open **`/demo`** (or open `/parent`, `/pos` and `/school` in separate tabs/windo
   - *Frozen*: freeze the bracelet in the parent app first.
   - *Deactivated*: replace a bracelet on the dashboard, then tap the old one.
   - **Offline mode**: toggle *Online → Offline*. Charges are authorised against a cached snapshot and queued. *Reconnect & sync* replays them through the API, which re-checks every rule and reports any conflicts.
-- **School**: overview, students (search, assign a bracelet, lost-bracelet replacement with balance carry-over), transactions (date/vendor/type/status/search filters, CSV export), daily closing report (float reconciliation, print, CSV), menu management, refunds with an audit log, weekly reports, and currency settings.
+- **School**: overview, students (search, assign a bracelet, lost-bracelet replacement with balance carry-over), transactions (date/vendor/type/status/search filters, CSV export), daily closing report (float reconciliation, print, CSV), menu management, **events & store**, refunds with an audit log, weekly reports, and currency settings.
+- **Events & store (school side)**: create or edit events (date, deadline, capacity, eligible grades) and products (sizes, stock), and show or hide each one. Publishing an event notifies the parents of every eligible student live. The *Orders* view lets you check in attendees, mark uniforms collected, refund (back to the wallet or to the original payment method) and export CSV.
 
 **Language**: the toggle switches English/Arabic with full RTL across all apps (and all open tabs). Currency defaults to EGP and can be changed in *School → Settings*.
 
@@ -60,6 +62,7 @@ src/
     engine.ts        pure payment rules (also used by the offline POS)
     store.ts         in-memory DB, localStorage persistence, BroadcastChannel sync
     seed.ts          deterministic seed: 2 schools, 60 students, 3 parents, 26 items, 3 weeks of history
+    seed-shop.ts     events, uniforms/supplies and past shop orders
     dates.ts         local-time day helpers (Sun–Thu school week)
   i18n/              en/ar dictionaries (Arabic is type-checked for completeness), RTL, Intl formatting
   ui/                design system: Button, Card, Badge, Form controls, Modal, Toast, states, meters
@@ -80,6 +83,6 @@ src/
 
 ## Notes and limitations
 
-- All data lives in your browser's localStorage (key `kanteen.db.v3`). Clearing site data or using *Reset all data* re-seeds it. Seed dates are generated relative to "now", so there is always three weeks of history ending today.
+- All data lives in your browser's localStorage (key `kanteen.db.v4`). Clearing site data or using *Reset all data* re-seeds it. Seed dates are generated relative to "now", so there is always three weeks of history ending today.
 - Two tabs writing at the same instant resolve last-write-wins. That's fine for a demo and is the main thing a real backend would replace.
 - Authentication, payments, card handling and NFC are simulated. Test card `4000 0000 0000 0002`, or the *Simulate a failed payment* switch, shows the failure path.

@@ -19,8 +19,9 @@ import type {
 } from './types';
 import { addDays, dayKey, isSchoolDay, startOfDay } from './dates';
 import { blockReasonsFor, round2 } from './engine';
+import { generateShop } from './seed-shop';
 
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /* ---------- PRNG ---------- */
 
@@ -419,6 +420,10 @@ export function generateSeed(now: Date = new Date()): Database {
   notifications.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   for (const p of PARENTS) notifications.filter((n) => n.parentId === p.id).slice(0, 2).forEach((n) => (n.read = false));
 
+  const shop = generateShop({ now, schoolIds: SCHOOLS.map((s) => s.id), students, rand, id });
+  transactions.push(...shop.transactions);
+  transactions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
   return {
     version: DB_VERSION,
     seededAt: now.toISOString(),
@@ -432,5 +437,7 @@ export function generateSeed(now: Date = new Date()): Database {
     transactions,
     notifications,
     audit: audit.sort((a, b) => b.at.localeCompare(a.at)),
+    offerings: shop.offerings,
+    orders: shop.orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   };
 }

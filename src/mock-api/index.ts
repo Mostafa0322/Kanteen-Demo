@@ -3,7 +3,7 @@
  * To move to a real backend, re-implement `api` with HTTP calls and keep the types.
  */
 export { api, ApiError } from './api';
-export type { Api } from './api';
+export type { Api, OfferingAdminView } from './api';
 export * from './types';
 export { evaluateCharge, blockReasonsFor, cartTotal, round2 } from './engine';
 export { dayKey, addDays, parseDayKey } from './dates';
